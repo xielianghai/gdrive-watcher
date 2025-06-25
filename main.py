@@ -36,11 +36,10 @@ def get_all_tenant_settings():
                s.gdrive_source_parent_folder_id, 
                s.gdrive_scan_interval, 
                s.web_hook_url, 
-               s.rename_prefix, 
                t.id as tenant_id 
         FROM smepaf.tenant_settings s 
         JOIN smepaf.tenants t ON s.tenant_id = t.id
-        WHERE s.api_credentials IS NOT NULL
+        WHERE s.api_credentials IS NOT NULL AND t.status = 'ACTIVE'
     """
     cursor.execute(query)
     rows = cursor.fetchall()
@@ -54,7 +53,6 @@ def get_all_tenant_settings():
          source_parent_folder_id, 
          scan_interval, 
          webhook_url, 
-         rename_prefix, 
          tenant_id) = row
 
         tenants.append({
@@ -63,12 +61,12 @@ def get_all_tenant_settings():
             "source_parent_folder_id": source_parent_folder_id,
             "scan_interval": scan_interval or 60,
             "webhook_url": webhook_url,
-            "rename_prefix": rename_prefix or '__PROCESSED_',
             "tenant_id": tenant_id
         })
     return tenants
 
 # ====== Google Drive API ======
+
 def authenticate_google_drive(service_account_info):
     creds = service_account.Credentials.from_service_account_info(
         service_account_info,
@@ -82,35 +80,39 @@ def list_subfolders(service, parent_folder_id):
     return results.get('files', [])
 
 def list_files_in_folder(service, folder_id):
-    query = f"'{folder_id}' in parents and trashed = false and mimeType != 'application/vnd.google-apps.folder'"
+    query = (
+        f"'{folder_id}' in parents and trashed = false and "
+        "mimeType != 'application/vnd.google-apps.folder' and "
+        "not appProperties has {{ key='processed' and value='true' }}"
+    )
     results = service.files().list(q=query, fields="files(id, name)").execute()
     return results.get('files', [])
 
 def get_file_metadata(service, file_id):
-    fields = "id, name, webViewLink, thumbnailLink"
+    fields = "id, name, webViewLink, thumbnailLink, appProperties"
     file = service.files().get(fileId=file_id, fields=fields).execute()
     return file
 
-def rename_file(service, file_id, old_name, rename_prefix):
-    new_name = rename_prefix + old_name
+def mark_file_as_processed(service, file_id):
     service.files().update(
         fileId=file_id,
-        body={'name': new_name},
-        fields='id, name'
+        body={"appProperties": {"processed": "true"}},
+        fields="id"
     ).execute()
-    logging.info(f"Renamed: {old_name} -> {new_name}")
+    logging.info(f"Marked file as processed: {file_id}")
 
 # ====== Webhook processing ======
+
 def process_file_with_n8n(service, file, folder, tenant_settings):
     file_id = file['id']
     file_name = file['name']
-    rename_prefix = tenant_settings['rename_prefix']
 
-    if file_name.startswith(rename_prefix):
+    metadata = get_file_metadata(service, file_id)
+    # Defensive check: In theory, it will not be triggered because it is excluded in list()
+    if metadata.get("appProperties", {}).get("processed") == "true":
         logging.info(f"[{tenant_settings['tenant_code']}] Already processed: {file_name}")
         return
 
-    metadata = get_file_metadata(service, file_id)
     payload = {
         "tenantId": tenant_settings['tenant_id'],
         "fileId": file_id,
@@ -125,11 +127,12 @@ def process_file_with_n8n(service, file, folder, tenant_settings):
         response = requests.post(tenant_settings['webhook_url'], json=payload)
         response.raise_for_status()
         logging.info(f"[{tenant_settings['tenant_code']}] Webhook success: {file_name}")
-        rename_file(service, file_id, file_name, rename_prefix)
+        mark_file_as_processed(service, file_id)
     except Exception as e:
         logging.error(f"[{tenant_settings['tenant_code']}] Webhook failed for {file_name}: {e}")
 
 # ====== Per-Tenant Scan Loop ======
+
 def scan_loop(tenant_settings):
     tenant_code = tenant_settings['tenant_code']
     logging.info(f"Starting scan thread for tenant {tenant_code}")
@@ -158,9 +161,10 @@ def scan_loop(tenant_settings):
 
         except Exception as e:
             logging.error(f"[{tenant_code}] Fatal error in scan loop: {e}")
-            time.sleep(scan_interval)  # 碰到异常时也等一会再重试，避免死循环崩溃
+            time.sleep(scan_interval)
 
 # ====== Entry Point ======
+
 if __name__ == '__main__':
     tenants = get_all_tenant_settings()
     if not tenants:
@@ -172,6 +176,5 @@ if __name__ == '__main__':
         thread.daemon = True
         thread.start()
 
-    # 主线程保持运行
     while True:
         time.sleep(3600)
