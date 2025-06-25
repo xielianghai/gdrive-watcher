@@ -147,7 +147,7 @@ def scan_loop(tenant_settings):
             subfolders = list_subfolders(service, parent_folder_id)
 
             for folder in subfolders:
-                logging.info(f"[{tenant_code}] Subfolder: {folder['name']}")
+                logging.info(f"[{tenant_code}] Subfolder: {folder['name']}({folder['id']})")
                 files = list_files_in_folder(service, folder['id'])
 
                 if not files:
