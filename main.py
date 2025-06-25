@@ -57,7 +57,7 @@ def get_all_tenant_settings():
 
         tenants.append({
             "tenant_code": tenant_code,
-            "service_account_info": json.loads(service_account_json),
+            "service_account_info": json.loads(str(service_account_json)),
             "source_parent_folder_id": source_parent_folder_id,
             "scan_interval": scan_interval or 60,
             "webhook_url": webhook_url,
@@ -83,7 +83,7 @@ def list_files_in_folder(service, folder_id):
     query = (
         f"'{folder_id}' in parents and trashed = false and "
         "mimeType != 'application/vnd.google-apps.folder' and "
-        "not appProperties has {{ key='processed' and value='true' }}"
+        "not appProperties has { key='processed' and value='true' }"
     )
     results = service.files().list(q=query, fields="files(id, name)").execute()
     return results.get('files', [])
@@ -112,7 +112,7 @@ def process_file_with_n8n(service, file, folder, tenant_settings):
     if metadata.get("appProperties", {}).get("processed") == "true":
         logging.info(f"[{tenant_settings['tenant_code']}] Already processed: {file_name}")
         return
-
+    logging.info(f"[{tenant_settings['tenant_code']}] Start handle file: {file_name}")
     payload = {
         "tenantId": tenant_settings['tenant_id'],
         "fileId": file_id,
