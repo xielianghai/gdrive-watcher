@@ -138,6 +138,11 @@ def mark_file_as_processed(service, file_id):
 def process_file_with_n8n(service, file, folder, tenant_settings):
     file_id = file['id']
     file_name = file['name']
+    file_path = file['file_path']
+    file_type = file['file_type']
+    file_size = file['file_size']
+    upload_date = file['upload_date']
+    upload_method = 'GDrive'
 
     metadata = get_file_metadata(service, file_id)
     # Defensive check: In theory, it will not be triggered because it is excluded in list()
@@ -149,6 +154,11 @@ def process_file_with_n8n(service, file, folder, tenant_settings):
         "tenantId": tenant_settings['tenant_id'],
         "fileId": file_id,
         "fileName": file_name,
+        "filePath": file_path,
+        "fileType": file_type,
+        "fileSize": file_size,
+        "uploadDate": upload_date,
+        "uploadMethod": upload_method,
         "folderId": folder['id'],
         "folderName": folder['name'],
         "webViewLink": metadata.get("webViewLink"),
