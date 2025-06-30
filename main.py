@@ -89,9 +89,41 @@ def list_files_in_folder(service, folder_id):
     return results.get('files', [])
 
 def get_file_metadata(service, file_id):
-    fields = "id, name, webViewLink, thumbnailLink, appProperties"
+    fields = "id, name, mimeType, size, createdTime, parents, webViewLink, thumbnailLink, appProperties"
     file = service.files().get(fileId=file_id, fields=fields).execute()
-    return file
+    def mime_to_extension(mime_type):
+        mapping = {
+            'application/pdf': 'PDF',
+            'image/jpeg': 'JPG',
+            'image/png': 'PNG',
+            # 可扩展
+        }
+        return mapping.get(mime_type, 'UNKNOWN')
+
+    # 获取路径
+    def get_file_path(service, file_id):
+        path = []
+        current_id = file_id
+        while True:
+            file = service.files().get(fileId=current_id, fields="name, parents").execute()
+            path.insert(0, file['name'])
+            if 'parents' in file:
+                current_id = file['parents'][0]
+            else:
+                break
+        return "/" + "/".join(path[:-1])
+
+    return {
+        "id": file["id"],
+        "name": file["name"],
+        "file_path": get_file_path(service, file_id),
+        "file_type": mime_to_extension(file.get("mimeType", "")),
+        "file_size": int(file.get("size", 0)),
+        "upload_date": file.get("createdTime"),
+        "webViewLink": file.get("webViewLink"),
+        "thumbnailLink": file.get("thumbnailLink"),
+        "appProperties": file.get("appProperties", {})
+    }
 
 def mark_file_as_processed(service, file_id):
     service.files().update(
