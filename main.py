@@ -39,7 +39,7 @@ def get_all_tenant_settings():
                t.id as tenant_id 
         FROM smepaf.tenant_settings s 
         JOIN smepaf.tenants t ON s.tenant_id = t.id
-        WHERE s.api_credentials IS NOT NULL AND t.status = 'ACTIVE'
+        WHERE s.api_credentials IS NOT NULL AND t.status = 'ACTIVE' AND t.tenant_type != 0
     """
     cursor.execute(query)
     rows = cursor.fetchall()
